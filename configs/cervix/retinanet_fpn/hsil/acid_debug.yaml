@@ -1,0 +1,14 @@
+_BASE_: "./Base_hsil.yaml"
+
+OUTPUT_DIR: '/data/lxc/output/Cervix_Detection-master/retinanet_r50_fpn/hsil/acid_debug'
+
+DATASETS:
+  CERVIX_DATA_TYPE: 'acid'
+  TEST: ("cervix_valid", "cervix_test")
+  EVAL: ("cervix_valid",)
+
+SOLVER:
+  VIS_PERIOD: 10
+
+TEST:
+  EVAL_PERIOD: 20

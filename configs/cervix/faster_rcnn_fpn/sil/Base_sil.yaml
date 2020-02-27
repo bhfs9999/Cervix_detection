@@ -1,0 +1,11 @@
+_BASE_: "../Base_cervix_faster_rcnn_r50_fpn.yaml"
+
+DATASETS:
+  CERVIX_SPLIT_PATH_TRAIN: '/data/lxc/Cervix/paper_data/data_split/det/sil/train.txt'
+  CERVIX_SPLIT_PATH_VALID: '/data/lxc/Cervix/paper_data/data_split/det/sil/valid.txt'
+  CERVIX_SPLIT_PATH_TEST: '/data/lxc/Cervix/paper_data/data_split/det/sil/test.txt'
+  CERVIX_LABEL_TYPE: 'sil'
+
+MODEL:
+  ROI_HEADS:
+    NUM_CLASSES: 2

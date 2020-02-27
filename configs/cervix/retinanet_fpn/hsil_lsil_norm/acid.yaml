@@ -1,0 +1,8 @@
+_BASE_: "./Base_hsil_lsil_norm.yaml"
+
+OUTPUT_DIR: '/data/ctt/output/Cervix_Detection-master/retinanet_r50_fpn/hsil_lsil_norm/acid'
+
+DATASETS:
+  CERVIX_DATA_TYPE: 'acid'
+
+

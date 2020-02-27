@@ -1,0 +1,9 @@
+_BASE_: "./Base_hsil_norm.yaml"
+
+OUTPUT_DIR: '/data/ctt/output/Cervix_Detection-master/retinanet_r50_fpn/hsil_norm/acid_cam0.2_change01'
+
+DATASETS:
+  CERVIX_DATA_TYPE: 'acid'
+
+MODEL:
+  CAM_LOSS_WEIGHT: 0.2

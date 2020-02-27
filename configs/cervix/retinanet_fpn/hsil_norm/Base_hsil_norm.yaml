@@ -1,0 +1,12 @@
+_BASE_: "../Base_cervix_retinanet_r50_fpn.yaml"
+
+DATASETS:
+  CERVIX_SPLIT_PATH_TRAIN: '/data/ctt/data/CervixData/paper_data/hsil_norm/train.txt'
+  CERVIX_SPLIT_PATH_VALID: '/data/lxc/Cervix/paper_data/data_split/det/hsil/valid.txt'
+  CERVIX_SPLIT_PATH_TEST: '/data/lxc/Cervix/paper_data/data_split/det/hsil/test.txt'
+  CERVIX_LABEL_TYPE: 'hsil'
+
+MODEL:
+  RETINANET:
+    NUM_CLASSES: 1
+  CAM_CLASSIFIER: True

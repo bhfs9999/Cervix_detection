@@ -1,0 +1,6 @@
+_BASE_: "./Base_hsil.yaml"
+
+OUTPUT_DIR: '/data/lxc/output/Cervix_Detection-master/retinanet_r50_fpn/hsil/iodine'
+
+DATASETS:
+  CERVIX_DATA_TYPE: 'iodine'

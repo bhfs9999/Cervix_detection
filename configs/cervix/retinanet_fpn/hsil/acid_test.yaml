@@ -1,0 +1,16 @@
+_BASE_: "./Base_hsil.yaml"
+
+OUTPUT_DIR: '/data/ctt/output/Cervix_Detection-master/retinanet_r50_fpn/hsil/acid_test'
+
+DATASETS:
+  CERVIX_DATA_TYPE: 'acid'
+
+SOLVER:
+  STEPS: (15000, 30000)
+  MAX_ITER: 100000
+  CHECKPOINT_PERIOD: 1000
+  BASE_LR: 0.002
+  VIS_PERIOD: 10
+
+TEST:
+  EVAL_PERIOD: 1000

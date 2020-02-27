@@ -1,0 +1,9 @@
+_BASE_: "./Base_hsil_norm.yaml"
+
+OUTPUT_DIR: '/data/ctt/output/Cervix_Detection-master/retinanet_r50_fpn/hsil_norm/iodine_cam0.1_fcs'
+
+DATASETS:
+  CERVIX_DATA_TYPE: 'iodine'
+
+MODEL:
+  CAM_LOSS_WEIGHT: 0.1

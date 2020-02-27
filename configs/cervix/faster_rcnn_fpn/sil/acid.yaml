@@ -1,0 +1,6 @@
+_BASE_: "./Base_sil.yaml"
+
+OUTPUT_DIR: '/data/lxc/output/cervix_det/faster_r50_fpn/sil/acid'
+
+DATASETS:
+  CERVIX_DATA_TYPE: 'acid'

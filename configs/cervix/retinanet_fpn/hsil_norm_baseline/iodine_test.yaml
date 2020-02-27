@@ -1,0 +1,14 @@
+_BASE_: "./Base_hsil_norm_baseline.yaml"
+
+OUTPUT_DIR: '/data/ctt/output/Cervix_Detection-master/retinanet_r50_fpn/hsil_norm_baseline/iodine_test'
+
+DATASETS:
+  CERVIX_DATA_TYPE: 'iodine'
+
+SOLVER:
+  STEPS: (20000, 40000)
+  MAX_ITER: 80000
+  CHECKPOINT_PERIOD: 2000
+
+TEST:
+  EVAL_PERIOD: 2000

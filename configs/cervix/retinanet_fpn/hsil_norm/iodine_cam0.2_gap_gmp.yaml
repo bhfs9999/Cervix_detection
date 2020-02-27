@@ -1,0 +1,8 @@
+_BASE_: "./Base_hsil_norm.yaml"
+
+OUTPUT_DIR: '/data/ctt/output/Cervix_Detection-master/retinanet_r50_fpn/hsil_norm/iodine_cam0.2_gap_gmp'
+
+DATASETS:
+  CERVIX_DATA_TYPE: 'iodine'
+
+
