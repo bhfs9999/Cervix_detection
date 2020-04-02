@@ -1,6 +1,0 @@
-_BASE_: "./Base_hsil.yaml"
-
-OUTPUT_DIR: '/data/lxc/output/cervix_det/faster_r50_fpn/hsil/acid'
-
-DATASETS:
-  CERVIX_DATA_TYPE: 'acid'

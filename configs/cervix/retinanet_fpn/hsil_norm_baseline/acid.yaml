@@ -1,6 +1,9 @@
 _BASE_: "./Base_hsil_norm_baseline.yaml"
 
-OUTPUT_DIR: '/data/ctt/output/Cervix_Detection-master/retinanet_r50_fpn/hsil_norm_baseline/acid'
+OUTPUT_DIR: '/data/lxc/output/Cervix_Detection-master/retinanet_r50_fpn/hsil_norm_baseline/acid'
+
+MODEL:
+  RESUME_ITER: 15000
 
 DATASETS:
   CERVIX_DATA_TYPE: 'acid'

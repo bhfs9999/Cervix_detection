@@ -319,7 +319,7 @@ class CervixTrainer(SimpleTrainer):
                 self.after_train()
 
     @classmethod
-    def test(cls, cfg, model, evaluators=None, eval_only=False):
+    def test(cls, cfg, model, evaluators=None, eval_only=False, vis=False, vis_root=None):
         """
         Args:
             cfg (CfgNode):
@@ -360,7 +360,7 @@ class CervixTrainer(SimpleTrainer):
                     )
                     results[dataset_name] = {}
                     continue
-            results_i = inference_on_dataset(model, data_loader, evaluator)
+            results_i = inference_on_dataset(model, data_loader, evaluator, vis, vis_root)
             results[dataset_name] = results_i
             if comm.is_main_process():
                 assert isinstance(
@@ -417,7 +417,15 @@ def main(args):
         DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
             cfg.MODEL.WEIGHTS, resume=args.resume
         )
-        res = CervixTrainer.test(cfg, model, eval_only=True)
+        if args.vis:
+            vis_root = os.path.join(cfg.OUTPUT_DIR, 'vis')
+            vis = True
+            if not os.path.exists(vis_root):
+                os.makedirs(vis_root)
+        else:
+            vis_root = None
+            vis = False
+        res = CervixTrainer.test(cfg, model, eval_only=True, vis=vis, vis_root=vis_root)
         if comm.is_main_process():
             verify_results(cfg, res)
         return res

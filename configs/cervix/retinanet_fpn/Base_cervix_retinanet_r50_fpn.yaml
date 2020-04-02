@@ -17,4 +17,4 @@ DATASETS:
   EVAL: ("cervix_test",)
 
 TEST:
-  EVAL_PERIOD: 5000
+  EVAL_PERIOD: 1000

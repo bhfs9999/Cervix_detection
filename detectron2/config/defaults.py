@@ -159,8 +159,11 @@ _C.MODEL.FPN.FUSE_TYPE = "sum"
 # whether use cam auxiliary classification
 _C.MODEL.CAM_CLASSIFIER = False
 _C.MODEL.CAM_NORM_FORWARD = False
+_C.MODEL.CAM_CLS_ONLY = False
 _C.MODEL.CAM_AVG_POOL = False
 _C.MODEL.CAM_MAX_POOL = False
+_C.MODEL.MULTI_FCS = False
+_C.MODEL.POOLING_METHOD = 'average'  # average, max, average max
 _C.MODEL.MULTI_FCS = False
 
 # ---------------------------------------------------------------------------- #

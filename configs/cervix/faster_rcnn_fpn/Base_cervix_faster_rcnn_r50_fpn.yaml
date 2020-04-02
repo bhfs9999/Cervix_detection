@@ -15,7 +15,8 @@ SOLVER:
 
 DATASETS:
   TRAIN: ("cervix_train",)
-  TEST: ("cervix_valid",)
+  TEST: ("cervix_valid", "cervix_test")
+  EVAL: ("cervix_test",)
 
 TEST:
-  EVAL_PERIOD: 5000
+  EVAL_PERIOD: 1000

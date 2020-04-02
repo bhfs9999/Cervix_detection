@@ -1,6 +1,6 @@
 _BASE_: "./Base_hsil.yaml"
 
-OUTPUT_DIR: '/data/ctt/output/Cervix_Detection-master/retinanet_r50_fpn/hsil/iodine_steps051_lr0.005'
+OUTPUT_DIR: '/data/lxc/output/Cervix_Detection-master/retinanet_r50_fpn/hsil/iodine_steps051_lr0.005'
 
 DATASETS:
   CERVIX_DATA_TYPE: 'iodine'
@@ -10,6 +10,9 @@ SOLVER:
   MAX_ITER: 80000
   CHECKPOINT_PERIOD: 1000
   BASE_LR: 0.005
+
+MODEL:
+  RESUME_ITER: 6000
 
 TEST:
   EVAL_PERIOD: 1000

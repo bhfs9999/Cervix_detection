@@ -1,12 +1,14 @@
 _BASE_: "./Base_hsil_norm.yaml"
 
-OUTPUT_DIR: '/data/ctt/output/Cervix_Detection-master/retinanet_r50_fpn/hsil_norm/acid_cam0.2_steps153_lr0.002_gmp'
+OUTPUT_DIR: '/data/lxc/output/Cervix_Detection-master/retinanet_r50_fpn/hsil_norm/acid_cam0.2_steps153_lr0.002_gmp'
 
 DATASETS:
   CERVIX_DATA_TYPE: 'acid'
 
 MODEL:
   CAM_LOSS_WEIGHT: 0.2
+  RESUME_ITER: 18000
+  POOLING_METHOD: 'max'
 
 SOLVER:
   STEPS: (15000, 30000)

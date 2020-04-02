@@ -2,6 +2,7 @@ from collections import defaultdict, OrderedDict
 import logging
 import numpy as np
 import copy
+from sklearn.metrics import precision_score, recall_score, accuracy_score
 
 from detectron2.evaluation import DatasetEvaluator
 from detectron2.data import DatasetCatalog, MetadataCatalog
@@ -15,25 +16,30 @@ class MyEvaluator(DatasetEvaluator):
     def __init__(self, dataset_name, cfg, output_folder):
         self.dataset_name = dataset_name
         self._class_names = MetadataCatalog.get(dataset_name).thing_classes
-        self._annos = self._parse_annos()
+        self._annos, self._cls_labels = self._parse_annos()
+        self._pred_labels = {}
         self._predictions = defaultdict(list)
         self._output_folder = output_folder
         self._result = {}
         self._logger = logging.getLogger('detectron2.evaluation.evaluator')
         self._iou_threshs = list(range(50, 100, 5))
+        self._fp_rates = [1/8, 1/4, 1/2, 1, 2, 4, 8]
         self._max_dets = list(cfg.TEST.MAX_DETS)
 
     def _parse_annos(self):
         annos = DatasetCatalog.get(self.dataset_name)
         records = defaultdict(list)
+        cls_labels = {}
         for annos_a_img in annos:
             image_id = annos_a_img['image_id']
+            if 'image_label' in annos_a_img:
+                cls_labels[image_id] = annos_a_img['image_label']
             for anno in annos_a_img['annotations']:
                 records[image_id].append({
                     'class': anno['category_id'],
                     'box': anno['bbox']
                 })
-        return records
+        return records, cls_labels
 
     def reset(self):
         self._predictions = defaultdict(list)
@@ -46,6 +52,8 @@ class MyEvaluator(DatasetEvaluator):
             boxes = instances.pred_boxes.tensor.numpy()
             scores = instances.scores.tolist()
             classes = instances.pred_classes.tolist()
+            if 'cls_label' in output:
+                self._pred_labels[image_id] = output['cls_label'].cpu().tolist()[0]
             for box, score, cls in zip(boxes, scores, classes):
                 self._predictions[cls].append({
                     'image_id': image_id,
@@ -55,22 +63,29 @@ class MyEvaluator(DatasetEvaluator):
 
     def evaluate(self):
         all_predictions = comm.gather(self._predictions, dst=0)
+        all_pred_labels = comm.gather(self._pred_labels, dst=0)
         if not comm.is_main_process():
             return
         predictions = defaultdict(list)
+        pred_labels = {}
         for predictions_per_rank in all_predictions:
             for cls_id, v in predictions_per_rank.items():
                 predictions[cls_id].extend(v)
         del all_predictions
+        for pred_labels_per_rank in all_pred_labels:
+            pred_labels.update(pred_labels_per_rank)
+        del pred_labels_per_rank
 
         self._logger.info('Evaluation results...')
         predictions = self.sort_predictions(predictions)
         K = len(self._class_names)  # class
         T = len(self._iou_threshs)  # iou thresh
         M = len(self._max_dets)  # max detection per image
+        F = len(self._fp_rates)  # fp rates to calculate recall
         aps = -np.ones((K, T, M))
         ars = -np.ones((K, T, M))
         frocs = -np.ones((K, T, M))
+        recalls_fp_rates = -np.ones((K, T, M, F))
         rec_img_list = -np.ones((K, T, M))
         for k_i, cls_name in enumerate(self._class_names):
             if k_i not in predictions:
@@ -79,27 +94,47 @@ class MyEvaluator(DatasetEvaluator):
             gts = self.get_cls_gts(k_i)
             for t_i, thresh in enumerate(self._iou_threshs):  # iou from 0.5 to 0.95, step 0.05
                 for m_i, max_det in enumerate(self._max_dets):
-                    max_rec, ap, froc, rec_img = self.eval(dts, gts, ovthresh=thresh / 100, max_det=max_det)
+                    max_rec, ap, froc, rec_img, recall_fp_rates = self.eval(dts, gts, ovthresh=thresh / 100,
+                                                                            max_det=max_det, fp_rates=self._fp_rates)
                     aps[k_i, t_i, m_i] = ap * 100
                     ars[k_i, t_i, m_i] = max_rec * 100
                     frocs[k_i, t_i, m_i] = froc * 100
                     rec_img_list[k_i, t_i, m_i] = rec_img * 100
+                    recalls_fp_rates[k_i, t_i, m_i, :] = [x * 100 for x in recall_fp_rates]
 
         self._result = {
             'aps': aps,
             'ars': ars,
             'frocs': frocs,
-            'rec_img_list': rec_img_list
+            'rec_img_list': rec_img_list,
+            'recalls_fp_rates': recalls_fp_rates
         }
 
         record = self.summarize()
         result = OrderedDict()
         result['bbox'] = record
 
+        if len(self._pred_labels) > 0:
+            pred_labels = []
+            gt_labels = []
+            for img_id, pred_label in self._pred_labels.items():
+                pred_labels.append(pred_label)
+                gt_labels.append(self._cls_labels[img_id])
+            precision = precision_score(gt_labels, pred_labels, pos_label=0)
+            recall = recall_score(gt_labels, pred_labels, pos_label=0)
+            accuracy = accuracy_score(gt_labels, pred_labels)
+            result['cls'] = {
+                'precision': precision,
+                'recall': recall,
+                'acc': accuracy
+            }
+            self._logger.info('classification result | precision = {:0.5f}'.format(precision))
+            self._logger.info('classification result | recall = {:0.5f}'.format(recall))
+            self._logger.info('classification result | accuracy = {:0.5f}'.format(accuracy))
         return result
 
     def summarize(self):
-        def _summarize(type, iou_t=None, max_det=100):
+        def _summarize(type, iou_t=None, max_det=100, fp_rate=None):
             i_str = ' {:<18} @[ IoU={:<9} | maxDets={} ] = {:0.5f}'
             mind = [i for i, mdet in enumerate(self._max_dets) if mdet == max_det]
             if iou_t is None:
@@ -121,6 +156,10 @@ class MyEvaluator(DatasetEvaluator):
             elif type == 'irec':
                 title_str = 'Image Recall'
                 metric_res = np.mean(self._result['rec_img_list'][:, tind, mind])
+            elif type == 'recall_fp_rate':
+                title_str = 'rc_fp_rate{}'.format(fp_rate)
+                fp_rate_idx = [i for i, rate in enumerate(self._fp_rates) if rate == fp_rate]
+                metric_res = np.mean(self._result['recalls_fp_rates'][:, tind, mind, fp_rate_idx])
             else:
                 raise ValueError
             metric_res = float(metric_res)
@@ -140,6 +179,15 @@ class MyEvaluator(DatasetEvaluator):
         ret[f'FROC'] = _summarize(type='froc', iou_t=None, max_det=self._max_dets[-1])
         ret[f'FROC50'] = _summarize(type='froc', iou_t=50, max_det=self._max_dets[-1])
         ret[f'FROC75'] = _summarize(type='froc', iou_t=75, max_det=self._max_dets[-1])
+
+        # recall on each fp rates
+        for fp_rate in self._fp_rates:
+            ret[f'Recall_fp_rate{fp_rate}'] = _summarize(type='recall_fp_rate', iou_t=None,
+                                                         max_det=self._max_dets[-1], fp_rate=fp_rate)
+            ret[f'Recall50_fp_rate{fp_rate}'] = _summarize(type='recall_fp_rate', iou_t=50,
+                                                           max_det=self._max_dets[-1], fp_rate=fp_rate)
+            ret[f'Recall75_fp_rate{fp_rate}'] = _summarize(type='recall_fp_rate', iou_t=75,
+                                                           max_det=self._max_dets[-1], fp_rate=fp_rate)
 
         # image level recall
         for max_det in self._max_dets:
@@ -182,7 +230,7 @@ class MyEvaluator(DatasetEvaluator):
         return {'gt_recs': gt_recs, 'npos': npos}
 
     @ staticmethod
-    def eval(dts, gts, ovthresh=0.5, max_det=np.inf):
+    def eval(dts, gts, ovthresh=0.5, max_det=np.inf, fp_rates=[]):
         """
         eval one class
         """
@@ -199,7 +247,7 @@ class MyEvaluator(DatasetEvaluator):
         max_det_count = defaultdict(int)
         nimg = len(gt_recs)
         img_m = np.zeros(nimg)  # calculate recall on image level, means patient level recall
-        fps_thresh = nimg * np.array([1/8, 1/4, 1/2, 1, 2, 4, 8])
+        fps_thresh = nimg * np.array(fp_rates)
         npos = gts['npos']
         tp = []  # true positive, for recall and precision
         fp = []  # false positive, for precision
@@ -262,11 +310,12 @@ class MyEvaluator(DatasetEvaluator):
         # find first idx where fp > fp_thresh, append sentinel values at the end
         fp = np.concatenate((fp, [np.inf]))
         fp_idx = [min((fp > x).nonzero()[0][0], len(fp)-2) for x in fps_thresh]
-        froc = np.mean([rec[idx] for idx in fp_idx])
+        recall_fp_rates = [rec[idx] for idx in fp_idx]
+        froc = np.mean(recall_fp_rates)
         max_rec = rec.max()
         rec_img = np.sum(img_m) / len(img_m)
 
-        return max_rec, ap, froc, rec_img
+        return max_rec, ap, froc, rec_img, recall_fp_rates
 
     @staticmethod
     def voc_ap(rec, prec):

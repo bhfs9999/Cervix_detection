@@ -142,7 +142,8 @@ class RetinaNet(nn.Module):
         features = [features[f] for f in self.in_features]  # 取出各阶段的feature, 从p3到p7
 
         if self.cam_aux:
-            cam_logits, features, heatmaps = self.cam_cls(features, image_labels)  # weighted hsil features
+            # weighted hsil features
+            cam_logits, features, heatmaps, raw_heatmaps = self.cam_cls(features, image_labels)
             if not self.cam_norm_forward:
                 features = [feature[image_labels == 0] for feature in features]
 
@@ -175,7 +176,14 @@ class RetinaNet(nn.Module):
                 }
                 if self.cam_aux:
                     heatmaps_this_img = [heatmap[idx] for heatmap in heatmaps]
+                    raw_heatmaps_this_img = [heatmap[idx] for heatmap in raw_heatmaps]
                     output['heatmaps'] = heatmaps_this_img
+                    output['raw_heatmaps'] = raw_heatmaps_this_img
+
+                    cam_logit = [logit_per_fpn[idx] for logit_per_fpn in cam_logits]
+                    cam_logit = torch.sum(torch.stack(cam_logit, dim=0), dim=0)  # 2
+                    cls_label = torch.argmax(cam_logit).unsqueeze(0)
+                    output['cls_label'] = cls_label
                 processed_results.append(output)
             return processed_results
 
@@ -475,32 +483,25 @@ class CAMClassifier(nn.Module):
     def __init__(self, cfg, input_shape: List[ShapeSpec]):
         super().__init__()
         in_channels = input_shape[0].channels
+        self.cls_only = cfg.MODEL.CAM_CLS_ONLY
         self.cam_num_classes = cfg.MODEL.RETINANET.CAM_NUM_CLASSES  # 2
+        self.pooling_method = cfg.MODEL.POOLING_METHOD
+        self.multi_fcs = cfg.MODEL.MULTI_FCS
 
-        self.cam_cls = nn.Linear(in_channels, self.cam_num_classes, bias=False)
-        # Initialization
-        torch.nn.init.normal_(self.cam_cls.weight, mean=0, std=0.01)
-        # # for multi fcs use
-        # self.fc_p7 = nn.Linear(in_channels, self.cam_num_classes, bias=False)
-        # self.fc_p6 = nn.Linear(in_channels, self.cam_num_classes, bias=False)
-        # self.fc_p5 = nn.Linear(in_channels, self.cam_num_classes, bias=False)
-        # self.fc_p4 = nn.Linear(in_channels, self.cam_num_classes, bias=False)
-        # self.fc_p3 = nn.Linear(in_channels, self.cam_num_classes, bias=False)
-        # self.multi_fcs = [self.fc_p3, self.fc_p4, self.fc_p5, self.fc_p6, self.fc_p7]
-        # # Initialization
-        # for fc in self.multi_fcs:
-        #     torch.nn.init.normal_(fc.weight, mean=0, std=0.01)
-
-        # # for gap and gmp use
-        # self.gap_cls = nn.Linear(in_channels, self.cam_num_classes, bias=False)
-        # self.gmp_cls = nn.Linear(in_channels, self.cam_num_classes, bias=False)
-        # self.conv1x1 = nn.Conv2d(in_channels * 2, in_channels, kernel_size=1, stride=1, bias=True)
-        # self.relu = nn.ReLU(True)
-        # # Initialization
-        # torch.nn.init.normal_(self.gap_cls.weight, mean=0, std=0.01)
-        # torch.nn.init.normal_(self.gmp_cls.weight, mean=0, std=0.01)
-        # torch.nn.init.normal_(self.conv1x1.weight, mean=0, std=0.01)
-        # torch.nn.init.constant_(self.conv1x1.bias, 0)
+        if self.multi_fcs:
+            self.fc_p7 = nn.Linear(in_channels, self.cam_num_classes, bias=False)
+            self.fc_p6 = nn.Linear(in_channels, self.cam_num_classes, bias=False)
+            self.fc_p5 = nn.Linear(in_channels, self.cam_num_classes, bias=False)
+            self.fc_p4 = nn.Linear(in_channels, self.cam_num_classes, bias=False)
+            self.fc_p3 = nn.Linear(in_channels, self.cam_num_classes, bias=False)
+            self.multi_fcs = [self.fc_p3, self.fc_p4, self.fc_p5, self.fc_p6, self.fc_p7]
+            # Initialization
+            for fc in self.multi_fcs:
+                torch.nn.init.normal_(fc.weight, mean=0, std=0.01)
+        else:
+            self.cam_cls = nn.Linear(in_channels, self.cam_num_classes, bias=False)
+            # Initialization
+            torch.nn.init.normal_(self.cam_cls.weight, mean=0, std=0.01)
 
     def forward(self, features, labels):
         """
@@ -510,58 +511,52 @@ class CAMClassifier(nn.Module):
         :return: heatmaps:
         """
         logits = []
-
-        # for gap or gmp use
-        for feature in features:
-            feature = nn.functional.adaptive_avg_pool2d(feature, 1)
-            # feature = nn.functional.adaptive_max_pool2d(feature, 1)
-            logit = self.cam_cls(feature.view(feature.shape[0], -1))
-            logits.append(logit)
-
-        # self.cam_cls.parameters() -> [1(no bias, only weight) * num_cls * channels]
-        hsil_weight = list(self.cam_cls.parameters())[0][0].unsqueeze(0).unsqueeze(2).unsqueeze(3)  # 1, 256, 1, 1
         res_features = []
-        for feature in features:
-            # TODO *hsil_weight or *(1+hsil_weight)
-            tmp_feature = torch.zeros_like(feature)
-            tmp_feature[labels == 0] = feature[labels == 0] * hsil_weight
-            tmp_feature[labels == 1] = feature[labels == 1]
-            res_features.append(tmp_feature)
+
+        if self.multi_fcs:
+            # multi fcs
+            for feature, fc in zip(features, self.multi_fcs):   # feature in per level
+                if self.pooling_method == 'average':
+                    x = nn.functional.adaptive_avg_pool2d(feature, 1)
+                elif self.pooling_method == 'max':
+                    x = nn.functional.adaptive_max_pool2d(feature, 1)
+                else:
+                    print('wrong type of cfg.MODEL.POOLING_METHOD')
+                    raise ValueError
+                logit = fc(x.view(x.shape[0], -1))
+                logits.append(logit)
+                if self.cls_only:
+                    res_features.append(feature)
+                else:
+                    hsil_weight = list(fc.parameters())[0][0].unsqueeze(0).unsqueeze(2).unsqueeze(3)
+                    tmp_feature = torch.zeros_like(feature)
+                    tmp_feature[labels == 0] = feature[labels == 0] * hsil_weight
+                    tmp_feature[labels == 1] = feature[labels == 1]
+                    res_features.append(tmp_feature)
+        else:
+            # single fc
+            # self.cam_cls.parameters() -> [1(no bias, only weight) * num_cls * channels]
+            hsil_weight = list(self.cam_cls.parameters())[0][0].unsqueeze(0).unsqueeze(2).unsqueeze(3)  # 1, 256, 1, 1
+            for feature in features:
+                if self.pooling_method == 'average':
+                    x = nn.functional.adaptive_avg_pool2d(feature, 1)
+                elif self.pooling_method == 'max':
+                    x = nn.functional.adaptive_max_pool2d(feature, 1)
+                else:
+                    print('wrong type of cfg.MODEL.POOLING_METHOD')
+                    raise ValueError
+                logit = self.cam_cls(x.view(x.shape[0], -1))
+                logits.append(logit)
+                if self.cls_only:
+                    res_features.append(feature)
+                else:
+                    # TODO *hsil_weight or *(1+hsil_weight)
+                    tmp_feature = torch.zeros_like(feature)
+                    tmp_feature[labels == 0] = feature[labels == 0] * hsil_weight
+                    tmp_feature[labels == 1] = feature[labels == 1]
+                    res_features.append(tmp_feature)
+
         heatmaps = [torch.sum(feature, dim=1, keepdim=True) for feature in res_features]
+        heatmaps_raw_feature = [torch.sum(feature, dim=1, keepdim=True) for feature in features]
 
-        # # for multi fcs use
-        # w_features = []
-        # for feature, fc in zip(features, self.multi_fcs):   # feature in per level
-        #     x = nn.functional.adaptive_avg_pool2d(feature, 1)
-        #     logit = fc(x.view(x.shape[0], -1))
-        #     logits.append(logit)
-        #
-        #     weight = list(fc.parameters())[0][0].unsqueeze(0).unsqueeze(2).unsqueeze(3)
-        #     w_features.append(feature * weight)
-        #
-        # w_hsil_features = [w_feature[labels == 0] for w_feature in w_features]  # hsil label: 0
-        # heatmaps = [torch.sum(w_hsil_feature, dim=1, keepdim=True) for w_hsil_feature in w_hsil_features]
-
-        # #  for gap and gmp use
-        # for feature in features:
-        #     fea_gap = nn.functional.adaptive_avg_pool2d(feature, 1)
-        #     fea_gmp = nn.functional.adaptive_max_pool2d(feature, 1)
-        #     logit_gap = self.gap_cls(fea_gap.view(fea_gap.shape[0], -1))
-        #     logit_gmp = self.gmp_cls(fea_gmp.view(fea_gmp.shape[0], -1))
-        #     logit = torch.cat([logit_gap, logit_gmp], 0)
-        #     logits.append(logit)
-        #
-        # w_gap = list(self.gap_cls.parameters())[0][0].unsqueeze(0).unsqueeze(2).unsqueeze(3)
-        # w_gmp = list(self.gmp_cls.parameters())[0][0].unsqueeze(0).unsqueeze(2).unsqueeze(3)
-        #
-        # hsil_features = [feature[labels == 0] for feature in features]
-        # w_gap_features = [feature * w_gap for feature in hsil_features]
-        # w_gmp_features = [feature * w_gmp for feature in hsil_features]
-        #
-        # w_hsil_features = []
-        # for w_gap_feature, w_gmp_feature in zip(w_gap_features, w_gmp_features):
-        #     w_hsil_feature = torch.cat([w_gap_feature, w_gmp_feature], 1)
-        #     w_hsil_features.append(self.relu(self.conv1x1(w_hsil_feature)))
-        # heatmaps = [torch.sum(w_hsil_feature, dim=1, keepdim=True) for w_hsil_feature in w_hsil_features]
-
-        return logits, res_features, heatmaps
+        return logits, res_features, heatmaps, heatmaps_raw_feature
