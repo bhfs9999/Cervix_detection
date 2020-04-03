@@ -1,0 +1,20 @@
+_BASE_: "./Base_hsil_norm.yaml"
+
+OUTPUT_DIR: '/data/lxc/output/Cervix_Detection-master/retinanet_r50_fpn/hsil_norm/acid_cam0.5_steps153_lr0.002'
+
+DATASETS:
+  CERVIX_DATA_TYPE: 'acid'
+  TEST: ("cervix_valid", "cervix_test")
+  EVAL: ("cervix_valid",)
+
+MODEL:
+  CAM_LOSS_WEIGHT: 0.5
+
+SOLVER:
+  STEPS: (15000, 30000)
+  MAX_ITER: 800000
+  CHECKPOINT_PERIOD: 1000
+  BASE_LR: 0.002
+
+TEST:
+  EVAL_PERIOD: 1000

@@ -1,0 +1,19 @@
+_BASE_: "./Base_hsil_norm.yaml"
+
+OUTPUT_DIR: '/data/lxc/output/Cervix_Detection-master/retinanet_r50_fpn/hsil_norm/iodine_cam0.2_steps153_lr0.002_norm_forward_cls_only'
+
+DATASETS:
+  CERVIX_DATA_TYPE: 'iodine'
+  TEST: ("cervix_valid", "cervix_test")
+  EVAL: ("cervix_valid",)
+
+MODEL:
+  CAM_LOSS_WEIGHT: 0.2
+  CAM_NORM_FORWARD: True
+  CAM_CLS_ONLY: True
+
+SOLVER:
+  STEPS: (15000, 30000)
+  MAX_ITER: 100000
+  CHECKPOINT_PERIOD: 1000
+  BASE_LR: 0.002
